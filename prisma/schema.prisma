@@ -1,0 +1,144 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SubscriptionStatus {
+  NONE
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum FormStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+enum QuestionType {
+  SHORT_TEXT
+  LONG_TEXT
+  BOOLEAN
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  DROPDOWN
+  EMAIL
+  NUMBER
+  DATE
+  RATING
+}
+
+enum ConditionOperator {
+  EQUALS
+  NOT_EQUALS
+  CONTAINS
+  GREATER_THAN
+  LESS_THAN
+}
+
+enum ConditionAction {
+  SHOW
+  HIDE
+}
+
+model User {
+  id                   String              @id @default(cuid())
+  name                 String?
+  email                String              @unique
+  passwordHash         String
+  stripeCustomerId     String?             @unique
+  stripeSubscriptionId String?             @unique
+  subscriptionStatus   SubscriptionStatus  @default(NONE)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  forms                Form[]
+}
+
+model Form {
+  id          String     @id @default(cuid())
+  userId      String
+  title       String
+  description String?
+  status      FormStatus @default(DRAFT)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions Question[]
+  responses FormResponse[]
+
+  @@index([userId])
+}
+
+model Question {
+  id          String       @id @default(cuid())
+  formId      String
+  order       Int
+  type        QuestionType
+  label       String
+  description String?
+  required    Boolean      @default(false)
+  options     Json?
+  config      Json?
+
+  form Form @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  // Rules that decide whether THIS question is shown/hidden
+  conditions ConditionalRule[] @relation("TargetQuestion")
+  // Rules that use THIS question's answer as the source condition
+  drivesConditions ConditionalRule[] @relation("SourceQuestion")
+
+  answers Answer[]
+
+  @@index([formId])
+}
+
+model ConditionalRule {
+  id              String            @id @default(cuid())
+  questionId      String
+  sourceQuestionId String
+  operator        ConditionOperator
+  value           Json
+  action          ConditionAction
+
+  question       Question @relation("TargetQuestion", fields: [questionId], references: [id], onDelete: Cascade)
+  sourceQuestion Question @relation("SourceQuestion", fields: [sourceQuestionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@index([sourceQuestionId])
+}
+
+model FormResponse {
+  id              String   @id @default(cuid())
+  formId          String
+  submittedAt     DateTime @default(now())
+  respondentEmail String?
+  metadata        Json?
+
+  form    Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  answers Answer[]
+
+  @@index([formId])
+}
+
+model Answer {
+  id         String   @id @default(cuid())
+  responseId String
+  questionId String
+  value      Json
+
+  response FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([responseId])
+  @@index([questionId])
+}
